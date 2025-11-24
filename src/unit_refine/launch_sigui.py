@@ -60,18 +60,26 @@ parser.add_argument('analyzer_index', help='Project folder path', default=None, 
 
 args = parser.parse_args(argv)
 
-analyzer_folder = Path(args.analyzer_folder)
+
+analyzer_folder = args.analyzer_folder
+
+if '//' not in analyzer_folder:
+    analyzer_folder = Path(analyzer_folder)
+
 project_folder = Path(args.project_folder)
 analyzer_index = int(args.analyzer_index)
 
-save_folder = project_folder / (f"analyzers/{analyzer_index}_" + analyzer_folder.name)
+if isinstance(analyzer_folder, str):
+    save_folder = project_folder / (f"analyzers/{analyzer_index}_" + analyzer_folder)#analyzer_folder.name)
+else:
+     save_folder = project_folder / (f"analyzers/{analyzer_index}_" + analyzer_folder.name)
 
 if Path(save_folder / "labels.csv").is_file():
     decisions = pd.read_csv(save_folder / "labels.csv")
 else:
     decisions = pd.DataFrame(columns=['unit_id', 'quality'])
 
-analyzer = si.load_sorting_analyzer(analyzer_folder, load_extensions=False)
+analyzer = si.load_sorting_analyzer(str(analyzer_folder), load_extensions=False)
 
 manual_labels = []
 for unit_id in analyzer.unit_ids:

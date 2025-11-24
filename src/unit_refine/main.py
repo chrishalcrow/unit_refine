@@ -103,8 +103,6 @@ class UnitRefineProject:
         analyer_in_project = Path(f'analyzers/{new_key}_{Path(directory).name}')
         self.analyzers[new_key] = {'path': directory, 'analyzer_in_project': analyer_in_project}
 
-        print(f"{self.analyzers=}")
-
 
 def load_project(folder_name):
 
@@ -427,7 +425,11 @@ class MainWindow(QtWidgets.QWidget):
         self.change_labels_button.setReadOnly(True)
         self.change_labels_button.setStyleSheet("background-color: LightBlue")
 
-        analyzer_path = Path(selected_directory)
+        print(f"{selected_directory=}")
+
+        analyzer_path = selected_directory
+
+
 
         print(f"\nLaunching SpikeInterface-GUI to curate analyzer at {analyzer_path}...")
         curate_filepath = Path(__file__).absolute().parent / "launch_sigui.py"
