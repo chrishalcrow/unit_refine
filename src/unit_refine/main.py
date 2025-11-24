@@ -15,7 +15,7 @@ from spikeinterface.core import load_sorting_analyzer
 from spikeinterface.curation import auto_label_units
 from unit_refine.train import TrainWindow
 from spikeinterface_gui.main import check_folder_is_analyzer
-from spikeinterface.core import is_path_remote
+from spikeinterface.core.core_tools import is_path_remote
 
 
 class UrlInputDialog(QtWidgets.QDialog):
@@ -23,13 +23,13 @@ class UrlInputDialog(QtWidgets.QDialog):
         super().__init__(parent)
         
         self.setWindowTitle("Open URL")
-        self.setMinimumWidth(400) # Set a reasonable width
+        self.setMinimumWidth(400)
 
         # --- Layout Setup ---
         layout = QtWidgets.QVBoxLayout()
 
         # 1. Label
-        self.label =QtWidgets.QLabel("Please enter the URL:")
+        self.label =QtWidgets.QLabel("Please enter the s3 path to an analyzer:")
         layout.addWidget(self.label)
 
         # 2. The Text Input (QLineEdit)
@@ -209,18 +209,18 @@ class MainWindow(QtWidgets.QWidget):
 
         curationTitleWidget = QtWidgets.QLabel(curation_title_text)
         curationTitleWidget.setStyleSheet("font-weight: bold; font-size: 20pt;")
-        #saLayout.addWidget(curationTitleWidget,0,0,1,1)
+        saLayout.addWidget(curationTitleWidget,0,0,1,1)
         
         self.add_sa_button = QtWidgets.QPushButton("+ Add Sorting Analyzer Folder")
         self.add_sa_button.clicked.connect(self.selectDirectoryDialog)
-        saLayout.addWidget(self.add_sa_button,2,0)
+        saLayout.addWidget(self.add_sa_button,1,0)
 
         self.add_s3_button = QtWidgets.QPushButton("+ Add Analyzer from s3")
         self.add_s3_button.clicked.connect(self.add_from_s3)
-        saLayout.addWidget(self.add_s3_button,2,1,1,2)
+        saLayout.addWidget(self.add_s3_button,1,1,1,2)
 
         self.curate_text = QtWidgets.QLabel("Curated?")
-        saLayout.addWidget(self.curate_text,3,2)
+        saLayout.addWidget(self.curate_text,2,2)
 
         self.saLayout = saLayout
         saWidget.setLayout(saLayout)
@@ -292,21 +292,12 @@ class MainWindow(QtWidgets.QWidget):
         
         dialog = UrlInputDialog()
 
-        # Execute the dialog (blocks until closed)
         if dialog.exec():
-            # If user clicked OK
             url = dialog.get_url()
-            print(f"User entered: {url}")
-        else:
-            # If user clicked Cancel
-            print("Dialog canceled.")
-
-        if is_path_remote(url):
-            self.project.add_analyzer(url)
-        else:
-            print(f"url {url} is not a valid analyzer path.")
-
-        
+            if is_path_remote(url):
+                self.project.add_analyzer(url)
+            else:
+                print(f"url {url} is not a valid analyzer path.")
 
     def make_apply_code(self):
 
@@ -360,7 +351,7 @@ class MainWindow(QtWidgets.QWidget):
             
     def make_curation_button_list(self):
 
-        for widget_no in range(2, self.saLayout.count()):
+        for widget_no in range(3, self.saLayout.count()):
             self.saLayout.itemAt(widget_no).widget().deleteLater()
 
         for analyzer_index, analyzer in enumerate(self.project.analyzers.values()):
