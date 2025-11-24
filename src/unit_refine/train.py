@@ -175,6 +175,8 @@ class TrainWindow(QtWidgets.QMainWindow):
 
         self.model_folder = folder
 
+        self.close()
+
 
     def closeEvent(self, event):
         """Intercepts the user closing the app, to save the labels."""

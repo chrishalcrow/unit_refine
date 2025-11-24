@@ -1,10 +1,10 @@
-import ast
 import json
 import subprocess
 import sys
 from argparse import ArgumentParser
 from functools import partial
 from pathlib import Path
+import shutil
 
 import pandas as pd
 import PyQt5.QtWidgets as QtWidgets
@@ -297,6 +297,9 @@ class MainWindow(QtWidgets.QWidget):
             
     def make_curation_button_list(self):
 
+        for widget_no in range(2, self.saLayout.count()):
+            self.saLayout.itemAt(widget_no).widget().deleteLater()
+
         for analyzer_index, analyzer in enumerate(self.project.analyzers.values()):
 
             selected_directory = analyzer['path']
@@ -309,6 +312,15 @@ class MainWindow(QtWidgets.QWidget):
             curate_button = QtWidgets.QPushButton(f'Curate "{selected_directory_text_display}"')
             curate_button.clicked.connect(partial(self.show_curation_window, selected_directory, analyzer_index))
             self.saLayout.addWidget(curate_button,4+analyzer_index,0)
+
+            self.btn_settings = QtWidgets.QToolButton()
+
+            icon = self.style().standardIcon(QtWidgets.QStyle.SP_TrashIcon) 
+            self.btn_settings.setIcon(icon)
+            self.btn_settings.setToolTip("Remove from curation")
+            self.btn_settings.clicked.connect(partial(self.remove_analyzer, analyzer_index))
+
+            self.saLayout.addWidget( self.btn_settings,4+analyzer_index,1)
     
             curation_output_folder = Path(self.project.folder_name) / Path(f"analyzers/{analyzer_index}_{Path(selected_directory).name}")
             curation_output_folder.mkdir(exist_ok=True)
@@ -323,7 +335,23 @@ class MainWindow(QtWidgets.QWidget):
 
             self.saLayout.addWidget(not_curated_text,4+analyzer_index,2)
 
+    def remove_analyzer(self, analyzer_index):
+
+        analyzer_indices = list(self.project.analyzers.keys())
+
+        analyzer_folder = Path(self.project.folder_name) / Path(self.project.analyzers[analyzer_indices[analyzer_index]]['analyzer_in_project'])
+        shutil.rmtree(str(analyzer_folder))
+
+        self.project.analyzers.pop(analyzer_indices[analyzer_index])
+
+        self.make_curation_button_list()
+        self.make_validate_button_list()
+
+
     def make_validate_button_list(self):
+
+        for widget_no in range(4, self.validateLayout.count()):
+            self.validateLayout.itemAt(widget_no).widget().deleteLater()
 
         for analyzer_index, analyzer in enumerate(self.project.analyzers.values()):
 
@@ -345,7 +373,7 @@ class MainWindow(QtWidgets.QWidget):
 
         analyzer_path = Path(selected_directory)
 
-        print("\nLaunching SpikeInterface-GUI in separate process...")
+        print(f"\nLaunching SpikeInterface-GUI to curate analyzer at {analyzer_path}...")
         curate_filepath = Path(__file__).absolute().parent / "launch_sigui.py"
         subprocess.run([sys.executable, curate_filepath, analyzer_path, f'{self.output_folder}', f'{analyzer_index}'])
         print("SpikeInterface-GUI closed, resuming main app.\n")
@@ -383,7 +411,7 @@ class MainWindow(QtWidgets.QWidget):
         model_labels_filepath = f"{self.output_folder / analyzer_in_project / f'labels_from_{current_model_name}.csv'}"
         self.current_predicted_labels.to_csv(model_labels_filepath, index_label="unit_id")
 
-        print("\nLaunching SpikeInterface-GUI in separate process...")
+        print(f"\nLaunching SpikeInterface-GUI to validate automated curation for analyzer at {analyzer_path}...")
         # This will block until the external process closes
         validate_filepath = Path(__file__).absolute().parent / "launch_sigui_validate.py"
         subprocess.run([sys.executable, validate_filepath, analyzer_path, f'{self.output_folder}', f'{analyzer_in_project}', f'{model_labels_filepath}'])
