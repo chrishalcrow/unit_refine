@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import QWidget
 from pyqtgraph import mkQApp
 from spikeinterface_gui.backend_qt import QtMainWindow
 from spikeinterface_gui.controller import Controller
-
+from spikeinterface.curation import auto_label_units
 
 def my_custom_close_handler(event: QCloseEvent, window: QWidget, project_folder, save_folder, analyzer):
     """
@@ -44,16 +44,18 @@ parser = argparse.ArgumentParser(description='spikeinterface-gui')
 parser.add_argument('analyzer_folder', help='SortingAnalyzer folder path', default=None, nargs='?')
 parser.add_argument('project_folder', help='Project folder path', default=None, nargs='?')
 parser.add_argument('analyzer_in_project', help='Project folder path', default=None, nargs='?')
-parser.add_argument('model_predictions_file')
 parser.add_argument('analyzer_index', help='Project folder path', default=None, nargs='?')
+parser.add_argument('model_folder')
+parser.add_argument('current_model_name')
 
 args = parser.parse_args(argv)
 
 project_folder = Path(args.project_folder)
 analyzer_in_project = Path(args.analyzer_in_project)
-model_predictions_file = Path(args.model_predictions_file)
 analyzer_index = args.analyzer_index
 analyzer_folder = args.analyzer_folder
+model_folder = args.model_folder
+current_model_name = args.current_model_name
 
 if '//' not in analyzer_folder:
     analyzer_folder = Path(analyzer_folder)
@@ -61,12 +63,18 @@ if '//' not in analyzer_folder:
 save_folder = project_folder / analyzer_in_project
 save_folder.mkdir(exist_ok=True, parents=True)
 
-model_decisions = pd.read_csv(model_predictions_file)
+sorting_analyzer = si.load_sorting_analyzer(analyzer_folder, load_extensions=False)
 
-analyzer = si.load_sorting_analyzer(analyzer_folder, load_extensions=False)
+print("\nUsing UnitRefine to label the units in your analyzer...\n")
+
+model_decisions = auto_label_units(sorting_analyzer=sorting_analyzer, model_folder=model_folder, trust_model=True)
+
+model_labels_filepath = f"{project_folder / analyzer_in_project / f'labels_from_{current_model_name}.csv'}"
+model_decisions.to_csv(model_labels_filepath, index_label="unit_id")
+model_decisions['unit_id'] = model_decisions.index
 
 manual_labels = []
-for unit_id in analyzer.unit_ids:
+for unit_id in sorting_analyzer.unit_ids:
     decision = {"unit_id": unit_id, 
                 "model": model_decisions[model_decisions['unit_id'] == unit_id]['prediction'].values,
                 }
@@ -83,26 +91,28 @@ extra_unit_properties = {'confidence': model_decisions['probability'].values}
 
 curation_dict = dict(
     format_version="2",
-    unit_ids=analyzer.unit_ids,
+    unit_ids=sorting_analyzer.unit_ids,
     manual_labels=manual_labels,
     label_definitions=label_definitions,
 )
 
 controller = Controller(
-    analyzer,
+    sorting_analyzer,
     backend="qt",
     curation=True,
     curation_data=curation_dict,
     extra_unit_properties=extra_unit_properties,
     displayed_unit_properties=['model', 'quality', 'confidence', 'firing_rate', 'snr', 'x', 'y', 'rp_violations'],
-    skip_extensions=['waveforms', 'principal_components', 'spike_locations'],
+    skip_extensions=['waveforms', 'principal_components', 'spike_locations', 'isi_histograms', 'template_similarity'],
 )
 
 layout_dict={'zone1': ['unitlist'], 'zone2': [], 'zone3': ['waveform'], 'zone4': ['correlogram'], 'zone5': ['spikeamplitude'], 'zone6': [], 'zone7': [], 'zone8': ['spikerate']}
 
+print(f"\nLaunching SpikeInterface-GUI to validate automated curation for analyzer at {analyzer_folder}...")
+
 app = mkQApp()
 win = QtMainWindow(controller, layout_dict=layout_dict, user_settings=None)
-win.closeEvent = functools.partial(my_custom_close_handler, window=win, project_folder=project_folder, save_folder=save_folder, analyzer=analyzer)
+win.closeEvent = functools.partial(my_custom_close_handler, window=win, project_folder=project_folder, save_folder=save_folder, analyzer=sorting_analyzer)
 
 win.show()
 app.exec()

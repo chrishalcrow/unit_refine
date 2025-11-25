@@ -454,25 +454,16 @@ class MainWindow(QtWidgets.QWidget):
     def show_validate_window(self, analyzer, analyzer_index):
 
         analyzer_path = analyzer['path']
-        sorting_analyzer = load_sorting_analyzer(analyzer_path, load_extensions=False)
-
+        
         current_model_name = self.combo_box.currentText()
 
         self.project.selected_model = [model for model in self.project.models if str(current_model_name) in str(model)][0]
 
-        print("\nUsing UnitRefine to label the units in your analyzer...\n")
-
-        self.current_predicted_labels = auto_label_units(sorting_analyzer=sorting_analyzer, model_folder= self.project.selected_model, trust_model=True)
-
         analyzer_in_project = analyzer['analyzer_in_project']
 
-        model_labels_filepath = f"{self.output_folder / analyzer_in_project / f'labels_from_{current_model_name}.csv'}"
-        self.current_predicted_labels.to_csv(model_labels_filepath, index_label="unit_id")
 
-        print(f"\nLaunching SpikeInterface-GUI to validate automated curation for analyzer at {analyzer_path}...")
-        # This will block until the external process closes
         validate_filepath = Path(__file__).absolute().parent / "launch_sigui_validate.py"
-        subprocess.run([sys.executable, validate_filepath, analyzer_path, f'{self.output_folder}', f'{analyzer_in_project}', f'{model_labels_filepath}', f'{analyzer_index}'])
+        subprocess.run([sys.executable, validate_filepath, str(analyzer_path), str(self.output_folder), str(analyzer_in_project), str(analyzer_index), self.project.selected_model, current_model_name])
         print("SpikeInterface-GUI closed, resuming main app.")
 
 def main():
