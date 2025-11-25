@@ -96,7 +96,7 @@ curation_dict = dict(
 )
 
 controller = Controller(
-        analyzer, backend="qt", curation=True, curation_data=curation_dict, skip_extensions=['waveforms', 'principal_components', 'spike_locations']
+        analyzer, backend="qt", curation=True, curation_data=curation_dict, skip_extensions=['waveforms', 'principal_components', 'spike_locations', 'isi_histograms', 'template_similarity'],
 )
 
 layout_dict={'zone1': ['unitlist'], 'zone2': [], 'zone3': ['waveform'], 'zone4': ['correlogram'], 'zone5': ['spikeamplitude'], 'zone6': [], 'zone7': [], 'zone8': ['spikerate']}

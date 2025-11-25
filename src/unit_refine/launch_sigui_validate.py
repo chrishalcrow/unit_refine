@@ -37,7 +37,6 @@ def my_custom_close_handler(event: QCloseEvent, window: QWidget, project_folder,
 
     labels_df.to_csv(save_folder / "relabelled_units.csv", index=False)
 
-
 argv = sys.argv[1:]
 
 parser = argparse.ArgumentParser(description='spikeinterface-gui')
@@ -47,6 +46,7 @@ parser.add_argument('analyzer_in_project', help='Project folder path', default=N
 parser.add_argument('analyzer_index', help='Project folder path', default=None, nargs='?')
 parser.add_argument('model_folder')
 parser.add_argument('current_model_name')
+parser.add_argument('hfh_or_local')
 
 args = parser.parse_args(argv)
 
@@ -56,6 +56,7 @@ analyzer_index = args.analyzer_index
 analyzer_folder = args.analyzer_folder
 model_folder = args.model_folder
 current_model_name = args.current_model_name
+hfh_or_local = args.hfh_or_local
 
 if '//' not in analyzer_folder:
     analyzer_folder = Path(analyzer_folder)
@@ -67,7 +68,10 @@ sorting_analyzer = si.load_sorting_analyzer(analyzer_folder, load_extensions=Fal
 
 print("\nUsing UnitRefine to label the units in your analyzer...\n")
 
-model_decisions = auto_label_units(sorting_analyzer=sorting_analyzer, model_folder=model_folder, trust_model=True)
+if hfh_or_local == "local":
+    model_decisions = auto_label_units(sorting_analyzer=sorting_analyzer, model_folder=model_folder, trust_model=True)
+else:
+    model_decisions = auto_label_units(sorting_analyzer=sorting_analyzer, repo_id=model_folder, trust_model=True)
 
 model_labels_filepath = f"{project_folder / analyzer_in_project / f'labels_from_{current_model_name}.csv'}"
 model_decisions.to_csv(model_labels_filepath, index_label="unit_id")

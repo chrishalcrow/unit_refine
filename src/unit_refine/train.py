@@ -150,7 +150,7 @@ class TrainWindow(QtWidgets.QMainWindow):
 
         model_folders_in_project = project.models
         if len(model_folders_in_project) > 0:
-            model_indices = np.array([int(str(model_path.name).split('__')[-1]) for model_path in model_folders_in_project])
+            model_indices = np.array([int(str(model_path[0].name).split('__')[-1]) for model_path in model_folders_in_project])
             max_model_index = np.max(model_indices) if len(model_indices) > 0 else 0
         else:
             max_model_index = 0
@@ -169,7 +169,7 @@ class TrainWindow(QtWidgets.QMainWindow):
             **train_model_kwargs,
         )
 
-        project.models.append(folder)
+        project.models.append((folder, "local"))
 
         print(f"\nFinished training models! Best model saved in in {folder}.\n")
 

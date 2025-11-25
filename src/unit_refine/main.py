@@ -19,13 +19,16 @@ from spikeinterface.core.core_tools import is_path_remote
 
 
 class UrlInputDialog(QtWidgets.QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, default=None, background_color=None):
         super().__init__(parent)
+
+        if default is None:
+            default = "https://www.example.com"
         
         self.setWindowTitle("Open URL")
         self.setMinimumWidth(400)
 
-        self.setStyleSheet("background-color: '#CBEECB'")
+        self.setStyleSheet(f"background-color: '#{background_color}'")
 
         layout = QtWidgets.QVBoxLayout()
 
@@ -33,7 +36,7 @@ class UrlInputDialog(QtWidgets.QDialog):
         layout.addWidget(self.label)
 
         self.url_input = QtWidgets.QLineEdit()
-        self.url_input.setPlaceholderText("https://www.example.com")
+        self.url_input.setPlaceholderText(default)
         self.url_input.setClearButtonEnabled(True)
         layout.addWidget(self.url_input)
         self.url_input.setStyleSheet("background-color: '#FFFFFF'")
@@ -145,8 +148,10 @@ def load_project(folder_name):
     model_folders = [folder for folder in list(models_folder.glob('*/')) if '.DS' not in str(folder)]
 
     for model_folder in model_folders:
-
-        project.models.append(model_folder)
+        if (model_folder / "hfh_path.txt").is_file():
+            project.models.append((model_folder, "hfh"))
+        else:
+            project.models.append((model_folder, "local"))
 
     return project
 
@@ -238,11 +243,15 @@ class MainWindow(QtWidgets.QWidget):
 
         train_button = QtWidgets.QPushButton("Train")
         train_button.clicked.connect(self.show_train_window)
-        self.trainLayout.addWidget(train_button,1,0)
+        self.trainLayout.addWidget(train_button,1,0,1,2)
 
-        train_button = QtWidgets.QPushButton("+ Load")
-        train_button.clicked.connect(self.selectModelDialog)
-        self.trainLayout.addWidget(train_button,1,1)
+        load_model_button = QtWidgets.QPushButton("+ Load")
+        load_model_button.clicked.connect(self.selectModelDialog)
+        self.trainLayout.addWidget(load_model_button,1,2,1,1)
+
+        load_model_hf = QtWidgets.QPushButton("+ Load from HFH")
+        load_model_hf.clicked.connect(self.add_from_hfh)
+        self.trainLayout.addWidget(load_model_hf,1,3,1,1)
 
         trainWidget.setLayout(self.trainLayout)
 
@@ -287,7 +296,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def add_from_s3(self):
         
-        dialog = UrlInputDialog()
+        dialog = UrlInputDialog(background_color="CBEECB")
 
         if dialog.exec():
             url = dialog.get_url()
@@ -298,6 +307,23 @@ class MainWindow(QtWidgets.QWidget):
                 self.make_validate_button_list()
             else:
                 print(f"url {url} is not a valid analyzer path.")
+
+
+    def add_from_hfh(self):
+        
+        dialog = UrlInputDialog(default = 'AnoushkaJain3/UnitRefine-mice-sua-classifier', background_color="FFDAB9")
+
+        if dialog.exec():
+            url = dialog.get_url()
+            if is_a_hfh_repo(url):
+                self.project.models = [(url, "hfh")] + self.project.models
+                model_directory = self.project.folder_name / "models" / url.split('/')[-1]
+                model_directory.mkdir(exist_ok=True)
+
+                with open(model_directory / 'hfh_path.txt', 'w') as output:
+                    output.write(url)
+
+                self.make_model_list()
 
     def make_apply_code(self):
 
@@ -344,7 +370,7 @@ class MainWindow(QtWidgets.QWidget):
             selected_directory = file_dialog.selectedFiles()[0]
 
             if is_a_model(selected_directory):
-                self.project.models = [selected_directory] + self.project.models
+                self.project.models = [(selected_directory, "local")] + self.project.models
                 self.make_model_list()
             else:
                 print(f"{selected_directory} is not a UnitRefine model folder.")
@@ -446,7 +472,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def make_model_list(self):
         self.combo_box = QtWidgets.QComboBox(self)
-        model_folders = [Path(model) for model in self.project.models]
+        model_folders = [Path(model[0]) for model in self.project.models]
         model_names = [model_folder.name for model_folder in model_folders]
         self.combo_box.addItems(model_names)       
         self.validateLayout.addWidget(self.combo_box,2,0)
@@ -457,13 +483,13 @@ class MainWindow(QtWidgets.QWidget):
         
         current_model_name = self.combo_box.currentText()
 
-        self.project.selected_model = [model for model in self.project.models if str(current_model_name) in str(model)][0]
+        self.project.selected_model, hfh_or_local = [model for model in self.project.models if str(current_model_name) in str(model[0])][0]
 
         analyzer_in_project = analyzer['analyzer_in_project']
 
 
         validate_filepath = Path(__file__).absolute().parent / "launch_sigui_validate.py"
-        subprocess.run([sys.executable, validate_filepath, str(analyzer_path), str(self.output_folder), str(analyzer_in_project), str(analyzer_index), self.project.selected_model, current_model_name])
+        subprocess.run([sys.executable, validate_filepath, str(analyzer_path), str(self.output_folder), str(analyzer_in_project), str(analyzer_index), self.project.selected_model, current_model_name, hfh_or_local])
         print("SpikeInterface-GUI closed, resuming main app.")
 
 def main():
@@ -506,6 +532,9 @@ def main():
 
 def is_a_model(directory):
     return (Path(directory) / "best_model.skops").is_file()
+
+def is_a_hfh_repo(url):
+    return True
 
 if __name__ == "__main__":
     main()
