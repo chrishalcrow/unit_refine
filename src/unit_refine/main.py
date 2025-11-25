@@ -80,7 +80,7 @@ class UnitRefineProject:
 
             path = analyzer_dict.get('path')
 
-            save_path = Path(folder_name / "analyzers" / f"{analyzer_name}_{Path(path).name}")
+            save_path = Path(folder_name / "analyzers" / f"analyzer_{analyzer_name}")
             save_path.mkdir(exist_ok=True)
 
             if path is not None:
@@ -101,7 +101,7 @@ class UnitRefineProject:
         else:
             new_key = 0
 
-        analyer_in_project = Path(f'analyzers/{new_key}_{Path(directory).name}')
+        analyer_in_project = Path(f'analyzers/analyzer_{new_key}')
         self.analyzers[new_key] = {'path': directory, 'analyzer_in_project': analyer_in_project}
 
 
@@ -140,7 +140,7 @@ def load_project(folder_name):
 
         analyzer_dict['analyzer_in_project'] = f"analyzers/{Path(analyzer_folder).name}"
 
-        project.analyzers[int(str(analyzer_folder.name).split('_')[0])] = analyzer_dict
+        project.analyzers[int(str(analyzer_folder.name).split('_')[1])] = analyzer_dict
             
     models_folder = folder_name / "models"
     model_folders = [folder for folder in list(models_folder.glob('*/')) if '.DS' not in str(folder)]
@@ -400,7 +400,7 @@ class MainWindow(QtWidgets.QWidget):
 
             self.saLayout.addWidget( self.btn_settings,4+analyzer_index,2)
     
-            curation_output_folder = Path(self.project.folder_name) / Path(f"analyzers/{analyzer_index}_{Path(selected_directory).name}")
+            curation_output_folder = Path(self.project.folder_name) / Path(f"analyzers/analyzer_{analyzer_index}")
             curation_output_folder.mkdir(exist_ok=True)
 
             if (curation_output_folder / "all_metrics.csv").is_file():
@@ -480,11 +480,13 @@ class MainWindow(QtWidgets.QWidget):
         analyzer_path = analyzer['path']
         
         current_model_name = self.combo_box.currentText()
+        if len(self.project.models) == 0:
+            print("\nNo models in project. Please train one, or add one.\n")
+            return
 
         self.project.selected_model, hfh_or_local = [model for model in self.project.models if str(current_model_name) in str(model[0])][0]
 
         analyzer_in_project = analyzer['analyzer_in_project']
-
 
         validate_filepath = Path(__file__).absolute().parent / "launch_sigui_validate.py"
         subprocess.run([sys.executable, validate_filepath, str(analyzer_path), str(self.output_folder), str(analyzer_in_project), str(analyzer_index), self.project.selected_model, current_model_name, hfh_or_local])

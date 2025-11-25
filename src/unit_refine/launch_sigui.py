@@ -69,7 +69,7 @@ if '//' not in analyzer_folder:
 project_folder = Path(args.project_folder)
 analyzer_index = int(args.analyzer_index)
 
-save_folder = project_folder / (f"analyzers/{analyzer_index}_" + Path(analyzer_folder).name)
+save_folder = project_folder / (f"analyzers/analyzer_{analyzer_index}")
 
 if Path(save_folder / "labels.csv").is_file():
     decisions = pd.read_csv(save_folder / "labels.csv")
