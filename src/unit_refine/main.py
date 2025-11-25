@@ -11,8 +11,6 @@ import PyQt5.QtWidgets as QtWidgets
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import QStyleFactory
-from spikeinterface.core import load_sorting_analyzer
-from spikeinterface.curation import auto_label_units
 from unit_refine.train import TrainWindow
 from spikeinterface_gui.main import check_folder_is_analyzer
 from spikeinterface.core.core_tools import is_path_remote
@@ -400,7 +398,7 @@ class MainWindow(QtWidgets.QWidget):
             self.btn_settings.setToolTip("Remove from curation")
             self.btn_settings.clicked.connect(partial(self.remove_analyzer, analyzer_index))
 
-            self.saLayout.addWidget( self.btn_settings,4+analyzer_index,1)
+            self.saLayout.addWidget( self.btn_settings,4+analyzer_index,2)
     
             curation_output_folder = Path(self.project.folder_name) / Path(f"analyzers/{analyzer_index}_{Path(selected_directory).name}")
             curation_output_folder.mkdir(exist_ok=True)
@@ -413,7 +411,7 @@ class MainWindow(QtWidgets.QWidget):
             else:
                 not_curated_text = QtWidgets.QLabel("---")
 
-            self.saLayout.addWidget(not_curated_text,4+analyzer_index,2)
+            self.saLayout.addWidget(not_curated_text,4+analyzer_index,1)
 
     def remove_analyzer(self, analyzer_index):
 

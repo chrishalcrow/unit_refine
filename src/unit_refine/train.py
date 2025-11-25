@@ -4,8 +4,73 @@ from functools import partial
 import pandas as pd
 import PyQt5.QtWidgets as QtWidgets
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import Qt
 from spikeinterface.curation import train_model
 import numpy as np
+from copy import copy
+
+metrics_presets = {
+    "Spike times metrics": ["num_spikes", "firing_rate", "presence_ratio", "snr", "isi_violations_ratio", "isi_violation_count", "rp_contamination", "rp_violations", "sliding_rp_violation", "sync_spike_2", "sync_spike_4", "sync_spike_8", "firing_range"],
+    "Quality metrics": ["num_spikes", "firing_rate", "presence_ratio", "snr", "isi_violations_ratio", "isi_violation_count", "rp_contamination", "rp_violations", "sliding_rp_violation", "sync_spike_2", "sync_spike_4", "sync_spike_8", "firing_range", "amplitude_cutoff", "amplitude_median", "amplitude_cv_median", "amplitude_cv_range", "drift_ptp", "drift_std", "drift_mad", "isolation_distance", "l_ratio", "d_prime", "silhouette", "nn_hit_rate", "nn_miss_rate"],
+    "Template metrics": ["peak_to_valley", "peak_trough_ratio", "half_width", "repolarization_slope", "recovery_slope", "num_positive_peaks", "num_negative_peaks", "velocity_above" "velocity_below", "exp_decay", "spread"],
+}
+class MetricPill(QtWidgets.QFrame):
+    # Signal to emit when the X is clicked, sending the metric name back
+    removed = pyqtSignal(str)
+
+    def __init__(self, name, parent=None):
+        super().__init__(parent)
+        self.name = name
+        
+        # 1. Setup the Layout for the Pill
+        layout = QtWidgets.QHBoxLayout()
+        layout.setContentsMargins(5, 2, 5, 2) # Left, Top, Right, Bottom padding
+        self.setLayout(layout)
+
+        # 2. The Label (Metric Name)
+        self.label = QtWidgets.QLabel(name)
+        self.label.setStyleSheet("border: none; background-color: white; font-weight: bold;")
+        
+        # 3. The 'X' Button
+        self.close_btn = QtWidgets.QPushButton("✕")
+        #self.close_btn.setCursor(QtWidgets.PointingHandCursor)
+        self.close_btn.setFixedSize(20, 20)
+        # Styling the button to look like a clean icon
+        self.close_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                color: black;
+                font-weight: bold;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: red;
+            }
+        """)
+        self.close_btn.clicked.connect(self.on_close_clicked)
+
+        # 4. Add widgets to layout
+        layout.addWidget(self.label)
+        layout.addWidget(self.close_btn)
+
+        # 5. Style the Pill itself (Rounded corners, background)
+        self.setStyleSheet("""
+            MetricPill {
+                background-color: white;
+                border-radius: 10px; 
+                border: 1px solid #000000;
+            }
+        """)
+        
+        # Make sure the pill doesn't expand indefinitely
+        self.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
+
+    def on_close_clicked(self):
+        # Emit the signal so the parent knows to run the specific method
+        self.removed.emit(self.name)
+        # Remove the visual widget
+        self.close()
+        self.deleteLater()
 
 class TrainWindow(QtWidgets.QMainWindow):
 
@@ -57,7 +122,11 @@ class TrainWindow(QtWidgets.QMainWindow):
         parent_folder = project_folder / 'models' 
 
         metric_names = [metric_name for metric_name in metric_names_set if metric_name not in ["index", "quality", "unit_id"]]
-        train_model_kwargs['metric_names'] = metric_names
+        self.metric_names = metric_names
+        self.available_metrics = copy(metric_names)
+
+        metrics_presets["All available"] = self.available_metrics
+
 
         data_text = "Using the following analyzers:<br />"
         for analyzer_dict, metric_data in zip(analyzers_for_training, metrics, strict=True):
@@ -97,10 +166,35 @@ class TrainWindow(QtWidgets.QMainWindow):
         codeButton = QtWidgets.QPushButton("Generate code to train a model")
         codeButton.clicked.connect(partial(self.generate_code, train_model_kwargs, parent_folder))
 
-        #trainButton.setStyleSheet("")
-
         formLayout.addRow(label_1)
         formLayout.addRow(blank_label)
+        
+        row_layout = QtWidgets.QHBoxLayout()
+        lbl_instruction = QtWidgets.QLabel("Which metrics?")
+        lbl_instruction.setStyleSheet("font-weight: bold;")
+
+        self.metric_selector = QtWidgets.QComboBox()
+        self.metric_selector.addItems(["All available", "Spike times metrics", "Quality metrics", "Template metrics"])
+        self.metric_selector.currentTextChanged.connect(self.select_metrics)
+        
+        row_layout.addWidget(lbl_instruction)
+        row_layout.addWidget(self.metric_selector)
+        row_layout.addStretch()
+
+        formLayout.addRow(row_layout)
+
+        # Choosing metrics
+        self.scroll_area = QtWidgets.QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QtWidgets.QFrame.NoFrame)
+        
+        self.pill_container = QtWidgets.QWidget()
+        self.pill_layout = QtWidgets.QHBoxLayout(self.pill_container)
+        
+        self.scroll_area.setWidget(self.pill_container)
+        formLayout.addRow(self.scroll_area)
+
+        self.select_metrics('All available')
 
         formLayout.addRow("List of Classifiers: ", self.classifiersForm)
         formLayout.addRow(classifiersOptions)
@@ -140,6 +234,42 @@ class TrainWindow(QtWidgets.QMainWindow):
 
         print(code_text)
 
+    def select_metrics(self, text):
+
+
+        preset_metric_names = metrics_presets[text]
+        metric_names = [metric_name for metric_name in preset_metric_names if metric_name in self.available_metrics]
+
+        self.metric_names = metric_names
+
+        self.make_new_metrics_list(metric_names)
+
+    def make_new_metrics_list(self, metrics):
+
+        while self.pill_layout.count():
+            item = self.pill_layout.takeAt(0)
+            widget = item.widget()
+            
+            if widget is not None:
+                # deleteLater schedules the widget for deletion
+                widget.deleteLater()
+
+        for metric in metrics:
+
+            # Create the pill
+            pill = MetricPill(metric)
+            # Connect the custom signal to your specific removal method
+            pill.removed.connect(self.remove_metric_from_list)
+            
+            # Add to layout
+            self.pill_layout.addWidget(pill)
+            #self.input_field.clear()
+
+    # --- This is the specific method you requested ---
+    def remove_metric_from_list(self, metric_name):
+        self.metric_names = [existing_metric_name for existing_metric_name in self.metric_names if existing_metric_name != metric_name]
+        print(f"Logic executed: Metric '{metric_name}' was removed from the data structure.")
+        # Add your backend logic here (e.g., updating a database or list variable)
 
     def do_training(self, train_model_kwargs, parent_folder, project):
 
@@ -150,7 +280,7 @@ class TrainWindow(QtWidgets.QMainWindow):
 
         model_folders_in_project = project.models
         if len(model_folders_in_project) > 0:
-            model_indices = np.array([int(str(model_path[0].name).split('__')[-1]) for model_path in model_folders_in_project])
+            model_indices = np.array([int(str(model_path[0].name).split('__')[-1]) for model_path in model_folders_in_project if '__' in str(model_path[0].name)])
             max_model_index = np.max(model_indices) if len(model_indices) > 0 else 0
         else:
             max_model_index = 0
@@ -159,15 +289,24 @@ class TrainWindow(QtWidgets.QMainWindow):
 
         print("\nUsing UnitRefine, inside SpikeInterface, to train models...\n")
 
-        train_model(
-            mode="csv",
-            imputation_strategies=imputation_strategies,
-            scaling_techniques=scaling_techniques,
-            classifiers=classifiers,
-            test_size=test_size,
-            folder=folder,
-            **train_model_kwargs,
-        )
+        QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+
+        try:
+          
+            train_model(
+                mode="csv",
+                imputation_strategies=imputation_strategies,
+                scaling_techniques=scaling_techniques,
+                classifiers=classifiers,
+                test_size=test_size,
+                folder=folder,
+                metric_names=self.metric_names,
+                **train_model_kwargs,
+            )
+
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
 
         project.models.append((folder, "local"))
 
