@@ -498,7 +498,10 @@ class MainWindow(QtWidgets.QWidget):
         model_imputer = model['imputer']
         model_imputer.keep_empty_features = True
 
-        X_training = pd.read_csv(Path(self.project.selected_model) / 'training_data.csv').drop('unit_id', axis=1).values
+        model_scaler = model['scaler']
+
+        X_training_raw = pd.read_csv(Path(self.project.selected_model) / 'training_data.csv')
+        X_training = X_training_raw.drop('unit_id', axis=1).values
         Y_training_raw = pd.read_csv(Path(self.project.selected_model) / 'labels.csv')
         Y_training = Y_training_raw.drop('unit_index', axis=1).values
 
@@ -510,6 +513,7 @@ class MainWindow(QtWidgets.QWidget):
         )
 
         X_new = []
+        X_just_values = []
         y_new = []
 
         for analyzer_name in self.project.analyzers:
@@ -535,16 +539,16 @@ class MainWindow(QtWidgets.QWidget):
 
 
             for quality, unit_id in y_new_with_unit_ids:
-                X_new.append(all_metrics.query(f'unit_id == {unit_id}').drop('unit_id', axis=1).values[0])
+                X_new.append(all_metrics.query(f'unit_id == {unit_id}').values[0])
+                X_just_values.append(all_metrics.query(f'unit_id == {unit_id}').drop('unit_id', axis=1).values[0])
                 y_new.append(quality)
 
-        X_imputed = model_imputer.fit_transform(X_new)
-
+        X_imputed = model_imputer.fit_transform(pd.DataFrame(X_just_values,columns=model_metric_names))
         learner.teach(X_imputed, y_new)
 
         all_training_data = pd.concat([
-            pd.DataFrame(X_training, columns=model_metric_names),
-            pd.DataFrame(X_new, columns=model_metric_names)
+            pd.DataFrame(X_training_raw, columns=np.concat([['unit_id'],model_metric_names])),
+            pd.DataFrame(X_new, columns=np.concat([model_metric_names,['unit_id']]))
         ])
 
         # save labels
@@ -555,13 +559,21 @@ class MainWindow(QtWidgets.QWidget):
         all_labels['unit_index'] = all_labels.index
 
         retrained_model_folder.mkdir(exist_ok=True, parents=True)
-        dump(learner.estimator, retrained_model_folder / "best_model.skops")
+        from sklearn.pipeline import Pipeline
+        retrained_pipeline = Pipeline(
+            [("imputer", model_imputer), ("scaler", model_scaler), ("classifier", learner.estimator)]
+        )
+        dump(retrained_pipeline, retrained_model_folder / "best_model.skops")
         all_labels.to_csv(retrained_model_folder / 'labels.csv', index=False)
         all_training_data.to_csv(retrained_model_folder / 'training_data.csv', index=False)
 
         shutil.copyfile(self.project.selected_model / 'model_info.json', retrained_model_folder / 'model_info.json')
+
+        self.project.models = [(retrained_model_folder, "local")] + self.project.models
         
-        print(f"balanced accuracy = {learner.score(all_training_data.values, all_labels['0'].values)=}")
+        print(f"balanced accuracy = {learner.score(all_training_data.drop('unit_id', axis=1).values, all_labels['0'].values)=}")
+
+        
 
     def show_curation_window(self, selected_directory, analyzer_index):
 
