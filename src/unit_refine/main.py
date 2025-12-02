@@ -6,6 +6,11 @@ from functools import partial
 from pathlib import Path
 import shutil
 
+from modAL.models import ActiveLearner
+from modAL.uncertainty import uncertainty_sampling
+from spikeinterface.curation.model_based_curation import load_model
+from skops.io import dump
+
 import numpy as np
 import pandas as pd
 import PyQt5.QtWidgets as QtWidgets
@@ -95,7 +100,6 @@ class UnitRefineProject:
 
         analyzer_keys = self.analyzers.keys()
         if len(analyzer_keys) > 0:
-            #analyzer_keys_ints = [int(key) for key in analyzer_keys]
             max_key = max(list(analyzer_keys))
             new_key = max_key + 1
         else:
@@ -477,22 +481,26 @@ class MainWindow(QtWidgets.QWidget):
 
     def retrain_model(self):
 
-        from modAL.models import ActiveLearner
-        from modAL.uncertainty import uncertainty_sampling
-        from spikeinterface.curation.model_based_curation import load_model
+        retrained_model_name = self.retrainedModelNameForm.text()
 
         current_model_name = self.combo_box.currentText()
         self.project.selected_model, hfh_or_local = [model for model in self.project.models if str(current_model_name) in str(model[0])][0]
 
+        retrained_model_folder = self.project.selected_model.parent / retrained_model_name
+
         model, model_info = load_model(
             model_folder=self.project.selected_model, trust_model=True
         )
+        label_conversion = model_info['label_conversion']
+        invert_label_conversion = {val: int(key) for key, val in label_conversion.items()}
         model_metric_names = model.feature_names_in_
+
         model_imputer = model['imputer']
-        model_scaler = model['scaler']
+        model_imputer.keep_empty_features = True
 
         X_training = pd.read_csv(Path(self.project.selected_model) / 'training_data.csv').drop('unit_id', axis=1).values
-        Y_training = pd.read_csv(Path(self.project.selected_model) / 'labels.csv').drop('unit_index', axis=1).values
+        Y_training_raw = pd.read_csv(Path(self.project.selected_model) / 'labels.csv')
+        Y_training = Y_training_raw.drop('unit_index', axis=1).values
 
         learner = ActiveLearner(
             estimator=model['classifier'],                    
@@ -503,6 +511,7 @@ class MainWindow(QtWidgets.QWidget):
 
         X_new = []
         y_new = []
+
         for analyzer_name in self.project.analyzers:
 
             folder_name = self.project.folder_name
@@ -517,28 +526,42 @@ class MainWindow(QtWidgets.QWidget):
             y_new_with_unit_ids = []
             for _, relabelled_unit in relabelled_units.iterrows():
                 if relabelled_unit['unit_id'] in original_labels['unit_id'].values:
-                    print(f"Nothing new for {relabelled_unit['unit_id']}")
                     if relabelled_unit['quality'] != original_labels.query(f"unit_id == {relabelled_unit['unit_id']}")['quality'].values[0]:
-                        y_new_with_unit_ids.append([relabelled_unit['quality'], relabelled_unit['unit_id']])
-                        print(f"A contradiction for {relabelled_unit['unit_id']}!! Let's update X_training")
+                        # New label contradicts the original label
+                        y_new_with_unit_ids.append([invert_label_conversion[relabelled_unit['quality']], relabelled_unit['unit_id']])
                 else:
-                    print(f"New info for {relabelled_unit['unit_id']}")
-                    y_new_with_unit_ids.append([relabelled_unit['quality'], relabelled_unit['unit_id']])
+                    # A newly labelled unit
+                    y_new_with_unit_ids.append([invert_label_conversion[relabelled_unit['quality']], relabelled_unit['unit_id']])
 
 
             for quality, unit_id in y_new_with_unit_ids:
                 X_new.append(all_metrics.query(f'unit_id == {unit_id}').drop('unit_id', axis=1).values[0])
-                print(f"{all_metrics.query(f'unit_id == {unit_id}').drop('unit_id', axis=1).values[0]=}")
                 y_new.append(quality)
 
-        from sklearn.impute import KNNImputer
-        imputer = KNNImputer(keep_empty_features=True)
-        X_imputed = imputer.fit_transform(X_new)
-        X_imputed_and_scaled = model_scaler.fit_transform(X_imputed)
+        X_imputed = model_imputer.fit_transform(X_new)
 
+        learner.teach(X_imputed, y_new)
 
-        learner.teach(X_imputed_and_scaled, y_new)
+        all_training_data = pd.concat([
+            pd.DataFrame(X_training, columns=model_metric_names),
+            pd.DataFrame(X_new, columns=model_metric_names)
+        ])
 
+        # save labels
+        all_labels = pd.concat([
+            Y_training_raw,
+            pd.DataFrame(y_new, columns=['0'])
+        ])
+        all_labels['unit_index'] = all_labels.index
+
+        retrained_model_folder.mkdir(exist_ok=True, parents=True)
+        dump(learner.estimator, retrained_model_folder / "best_model.skops")
+        all_labels.to_csv(retrained_model_folder / 'labels.csv', index=False)
+        all_training_data.to_csv(retrained_model_folder / 'training_data.csv', index=False)
+
+        shutil.copyfile(self.project.selected_model / 'model_info.json', retrained_model_folder / 'model_info.json')
+        
+        print(f"balanced accuracy = {learner.score(all_training_data.values, all_labels['0'].values)=}")
 
     def show_curation_window(self, selected_directory, analyzer_index):
 
